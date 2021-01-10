@@ -1,0 +1,13 @@
+`ifndef DMA_REGISTER_DEFINES
+`define DMA_REGISTER_DEFINES
+
+localparam DMA_READ_SOURCE = 32'h1000_0000;
+localparam DMA_WRITE_DEST = 32'h1000_0004;
+localparam DMA_BURST_SIZE = 32'h1000_0008;
+
+localparam DMA_WRITE_STATUS = 32'h1000_0020;
+localparam DMA_READ_STATUS = 32'h1000_0024;
+
+localparam DMA_START = 32'h1000_0040;
+
+`endif
