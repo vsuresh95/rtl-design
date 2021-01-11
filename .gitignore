@@ -1,0 +1,12 @@
+*.swp
+*DB
+DVEfiles
+*novas*
+csrc
+*simv
+*daidir
+*log
+*Log
+ucli.key
+*vpd
+*fsdb*
