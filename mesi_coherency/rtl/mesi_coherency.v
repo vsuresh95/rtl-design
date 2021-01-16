@@ -19,7 +19,7 @@ module mesi_coherency (
 	output reg [1:0] r_resp
 );
 
-l1cache_8w_sa #(.NUM_BLOCK(256)) dcache_00 (
+l1cache_8w_sa #(.NUM_BLOCK(1024)) dcache_00 (
 	.clk (clk),
 	.rstn (rstn),
 	.data_addr (data_addr),

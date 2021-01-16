@@ -69,6 +69,9 @@ typedef enum reg [2:0] {
 
 cache_state state;
 
+reg [$clog2(NUM_WAYS)-1:0] set_index;
+reg [$clog2(NUM_WAYS)-1:0] clock_set_index;
+
 always @ (posedge clk or negedge rstn) begin
 	rvalid <= 1'b0;
 	rdata <= 32'h0;
@@ -78,10 +81,12 @@ always @ (posedge clk or negedge rstn) begin
 	r_resp <= 2'h0;
 
 	if (!rstn) begin
-		set_id <= 7'h0;
-		tag_id <= 11'h0;
+		set_id <= 'h0;
+		tag_id <= 'h0;
 		wdata_ff <= 0;
 		state <= CACHE_IDLE;
+		set_index <= 'h0;
+		clock_set_index <= 'h0;
 
 		for (i = 0; i < NUM_BLOCK; i++) begin
 			data_array[i] <= 'h0;
@@ -103,23 +108,28 @@ always @ (posedge clk or negedge rstn) begin
 					// get the data to be written and store in a reg
 					if (wvalid == 1'b1)
 						wdata_ff <= wdata;
-				end
+					// initialize set index
+					set_index <= 'h0;					
+				end else
+					state <= CACHE_IDLE;
 			end
 			CACHE_WRITE: begin
 				// check if tag matches any of 8 blocks in the set; it doesn't
 				// matter if the block is valid or not
-				for (i = 0; i < 8; i++) begin
-					if (tag_id == tag_array[(set_id*NUM_WAYS)+i]) begin
-						w_hit <= 1'b1;
-						state <= CACHE_WHIT;
-						break;
-					end else
-						state <= CACHE_WMISS;
+				if (tag_id == tag_array[(set_id*NUM_WAYS)+set_index]) begin
+					w_hit <= 1'b1;
+					state <= CACHE_WHIT;
+				end else if (set_index == NUM_WAYS-1) begin
+					set_index <= 'h0;					
+					state <= CACHE_WMISS;
+				end else begin
+					set_index <= set_index + 1;
+					state <= CACHE_WRITE; 
 				end
 			end
 			CACHE_WHIT: begin
-				data_array[(set_id*NUM_WAYS)+i] <= wdata_ff;
-				valid_array[(set_id*NUM_WAYS)+i] <= 1'b1;
+				data_array[(set_id*NUM_WAYS)+set_index] <= wdata_ff;
+				valid_array[(set_id*NUM_WAYS)+set_index] <= 1'b1;
 				w_resp[0] <= 1'b1; 
 				state <= CACHE_IDLE;
 			end
@@ -127,22 +137,29 @@ always @ (posedge clk or negedge rstn) begin
 				// invoke Clock cache replacement policy
 				// iterate through all the elements of the set and find the first
 				// block which has clock_set = 0
-				for (i = 0; i < 8; i++) begin
-					// once you find the non-zero clock block after the most
-					// recently replaced one, we will our write in the cache
-					// block
-					//
-					// TODO the evicted cache needs to written back to memory
-					if (clock_set[set_id][curr_clock_block[set_id]+i+1] == 1'b0) begin 
-						data_array[(set_id*NUM_WAYS)+(curr_clock_block[set_id]+i+1)] <= wdata_ff;
-						tag_array[(set_id*NUM_WAYS)+(curr_clock_block[set_id]+i+1)] <= tag_id;
-						valid_array[(set_id*NUM_WAYS)+(curr_clock_block[set_id]+i+1)] <= 1'b1;
-						curr_clock_block[set_id] <= curr_clock_block[set_id]+i+1;
-						w_resp[0] <= 1'b1;
-						break;
-					end
-				end
-				state <= CACHE_IDLE;
+				//
+				// once you find the non-zero clock block after the most
+				// recently replaced one, we will our write in the cache
+				// block
+				//
+				// TODO the evicted cache needs to written back to memory
+
+				clock_set_index = curr_clock_block[set_id]+set_index+1;
+
+				if (clock_set[set_id][clock_set_index] == 1'b0) begin 
+					data_array[(set_id*NUM_WAYS)+(clock_set_index)] <= wdata_ff;
+					tag_array[(set_id*NUM_WAYS)+(clock_set_index)] <= tag_id;
+					valid_array[(set_id*NUM_WAYS)+(clock_set_index)] <= 1'b1;
+					curr_clock_block[set_id] <= clock_set_index;
+					clock_set[set_id][clock_set_index] <= 1'b1;
+					w_resp[0] <= 1'b1;
+					set_index <= 'h0;
+					state <= CACHE_IDLE;
+				end else begin
+					clock_set[set_id][clock_set_index] <= 1'b0;
+					set_index <= set_index + 1;
+					state <= CACHE_WMISS;
+				end 
 			end 
 			default: begin
 				state <= CACHE_IDLE;
