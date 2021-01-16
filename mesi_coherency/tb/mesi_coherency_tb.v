@@ -17,6 +17,15 @@ wire w_miss;
 wire r_miss;
 wire [1:0] w_resp;
 wire [1:0] r_resp;
+wire [19:0] ext_data_addr;
+wire [31:0] ext_wdata;
+wire ext_awvalid;
+wire ext_arvalid;
+wire ext_wvalid;
+wire ext_rvalid;
+wire [31:0] ext_rdata;
+wire [1:0] ext_w_resp;
+wire [1:0] ext_r_resp;
 
 integer i, j;
 reg [19:0] test_addr;
@@ -36,7 +45,16 @@ mesi_coherency dut (
 	.w_hit (w_hit),
 	.r_hit (r_hit),
 	.w_resp (w_resp),
-	.r_resp (r_resp)
+	.r_resp (r_resp), 
+	.ext_data_addr (ext_data_addr),
+	.ext_wdata (ext_wdata),
+	.ext_awvalid (ext_awvalid),
+	.ext_arvalid (ext_arvalid),
+	.ext_wvalid (ext_wvalid),
+	.ext_rvalid (ext_rvalid),
+	.ext_rdata (ext_rdata),
+	.ext_w_resp (ext_w_resp),
+	.ext_r_resp (ext_r_resp)
 );
 
 task write_word;
@@ -93,10 +111,10 @@ initial begin
 
 	#10 rstn = 1;
 
-	for (j = 1; j <= 100; j++) begin
+	for (j = 1; j <= 1; j++) begin
 	 	start_time = $time;
-		test_offset = 'h400*j;
-		for (i = 0; i < 1000; i++) begin
+		test_offset = 'h4_0000*j;
+		for (i = 0; i < 10000; i++) begin
 			test_addr = ($random % test_offset) * 4;
 			#10 write_word(test_addr, $random);
 		end

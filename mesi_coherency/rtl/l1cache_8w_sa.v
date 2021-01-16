@@ -33,7 +33,17 @@ module l1cache_8w_sa #(
 	output reg w_hit,
 	output reg r_hit,
 	output reg [1:0] w_resp,
-	output reg [1:0] r_resp
+	output reg [1:0] r_resp,
+
+	output reg [19:0] ext_data_addr,
+	output reg [31:0] ext_wdata,
+	output reg ext_awvalid,
+	output reg ext_arvalid,
+	output reg ext_wvalid,
+	input ext_rvalid,
+	input [31:0] ext_rdata,
+	input [1:0] ext_w_resp,
+	input [1:0] ext_r_resp	
 );
 
 // cache format is as below:
@@ -79,14 +89,19 @@ always @ (posedge clk or negedge rstn) begin
 	r_hit <= 1'b0;
 	w_resp <= 2'h0;
 	r_resp <= 2'h0;
+	ext_awvalid <= 1'b0;
+	ext_arvalid <= 1'b0;
+	ext_wvalid <= 1'b0;
 
 	if (!rstn) begin
 		set_id <= 'h0;
 		tag_id <= 'h0;
-		wdata_ff <= 0;
+		wdata_ff <= 'h0;
 		state <= CACHE_IDLE;
 		set_index <= 'h0;
 		clock_set_index <= 'h0;
+		ext_data_addr <= 'h0;
+		ext_wdata <= 'h0;
 
 		for (i = 0; i < NUM_BLOCK; i++) begin
 			data_array[i] <= 'h0;
@@ -141,15 +156,24 @@ always @ (posedge clk or negedge rstn) begin
 				// once you find the non-zero clock block after the most
 				// recently replaced one, we will our write in the cache
 				// block
-				//
-				// TODO the evicted cache needs to written back to memory
 
+				// the index to be checked in Clock for this iteration
 				clock_set_index = curr_clock_block[set_id]+set_index+1;
 
-				if (clock_set[set_id][clock_set_index] == 1'b0) begin 
+				if (clock_set[set_id][clock_set_index] == 1'b0) begin
+					// evict the block chosen by Clock as a posted write if it is valid
+					if (valid_array[(set_id*NUM_WAYS)+(clock_set_index)] == 1'b1) begin
+						ext_data_addr <= {tag_array[(set_id*NUM_WAYS)+(clock_set_index)], set_id, 2'b00};
+						ext_awvalid <= 1'b1;
+						ext_wdata <= data_array[(set_id*NUM_WAYS)+(clock_set_index)];
+						ext_wvalid <= 1'b1; 
+					end else begin
+						valid_array[(set_id*NUM_WAYS)+(clock_set_index)] <= 1'b1;
+					end
+
+					// allocate new block in the (evicted/invalid) block's place
 					data_array[(set_id*NUM_WAYS)+(clock_set_index)] <= wdata_ff;
 					tag_array[(set_id*NUM_WAYS)+(clock_set_index)] <= tag_id;
-					valid_array[(set_id*NUM_WAYS)+(clock_set_index)] <= 1'b1;
 					curr_clock_block[set_id] <= clock_set_index;
 					clock_set[set_id][clock_set_index] <= 1'b1;
 					w_resp[0] <= 1'b1;
