@@ -71,7 +71,7 @@ task read_word;
 	@(posedge clk);
 	prenable <= 1'b0;
 	wait(perr[0] == 1'b1);		
-	local_data = prdata;;
+	local_data = prdata;
 	if (perr[1] == 1'b1) begin
 		$display("Error received for read from 0x%x", local_addr);
 	end/* else begin
