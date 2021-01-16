@@ -13,7 +13,7 @@
 //
 // to implement LRU, we will use the Clock algorithm which requires only 1 bit 
 // per cache with reasonable accuracy (originally intended to a page replacement algorithm.
-// Reference: F. J. Corbato, ”A Paging Experiment with the Multics System”,
+// Reference: F. J. Corbato, 'A Paging Experiment with the Multics System',
 // MIT Project MAC Report MAC-M-384, May, 1968.
 module l1cache_8w_sa #(
 	parameter BLOCK_SIZE=32, // the horizontal width of each line in the cache data RAM memory
@@ -46,16 +46,28 @@ reg [BLOCK_SIZE-1:0] data_array [NUM_BLOCK-1:0]; // data RAM
 reg [TAG_SIZE-1:0] tag_array [NUM_BLOCK-1:0]; // tag RAM 
 reg valid_array [NUM_BLOCK-1:0]; // valid for each block RAM 
 
-reg [6:0] set_id; // 128 sets in total, therefore, 7 bits
-reg [10:0] tag_id; // 128 sets in total, therefore, 7 bits
+reg [$clog2(NUM_BLOCK/NUM_WAYS)-1:0] set_id;
+reg [TAG_SIZE-1:0] tag_id;
 
 // holds the one-hot encoding of the Clock status of each block in a set
-reg [NUM_WAYS-1:0] clock_set [NUM_BLOCK-1:0]; 
-integer curr_clock_block;
+reg [NUM_WAYS-1:0] clock_set [(NUM_BLOCK/NUM_WAYS)-1:0]; 
+reg [$clog2(NUM_WAYS)-1:0] curr_clock_block [(NUM_BLOCK/NUM_WAYS)-1:0];
 
 integer i;
 
 reg [31:0] wdata_ff;
+
+typedef enum reg [2:0] {
+	CACHE_IDLE = 3'b000,
+	CACHE_WRITE = 3'b001,
+	CACHE_WHIT = 3'b010,
+	CACHE_WMISS = 3'b011,
+	CACHE_READ = 3'b100,
+	CACHE_RHIT = 3'b101,
+	CACHE_RMISS = 3'b110
+} cache_state;
+
+cache_state state;
 
 always @ (posedge clk or negedge rstn) begin
 	rvalid <= 1'b0;
@@ -66,48 +78,76 @@ always @ (posedge clk or negedge rstn) begin
 	r_resp <= 2'h0;
 
 	if (!rstn) begin
-		i = 0;
-		curr_clock_block = 0;
-		set_id = 7'h0;
-		tag_id = 11'h0;
-		wdata_ff = 0;
+		set_id <= 7'h0;
+		tag_id <= 11'h0;
+		wdata_ff <= 0;
+		state <= CACHE_IDLE;
 
 		for (i = 0; i < NUM_BLOCK; i++) begin
 			data_array[i] <= 'h0;
 			tag_array[i] <= 'h0;
 			valid_array[i] <= 'h0;
 			clock_set[i] <= 'h0;
+			curr_clock_block[i] <= 0;
 		end
 	end 
-	else if (awvalid == 1'b1) begin 
-		// get set ID and store in a reg
-		set_id <= data_addr[8:2];
-
-		// get the tag and store in a reg
-		tag_id <= data_addr[19:9];
-
-		// get the data to be written and store in a reg
-		wdata_ff <= wdata;
-
-		for (i = 0; i < 8; i++) begin
-			// check if tag matches any of 8 blocks in the set, it doesn't
-			// matter if the block is valid or not
-			if (tag_id == tag_array[(set_id*NUM_WAYS)+i]) begin
-				w_hit <= 1'b1;
-				if (wvalid == 1'b1) begin
-					data_array[(set_id*NUM_WAYS)+i] <= wdata_ff;
+	else begin
+		unique case (state)
+			CACHE_IDLE: begin
+				if (awvalid == 1'b1) begin
+					state <= CACHE_WRITE;
+					// get the set ID and store in a reg
+					set_id <= data_addr[8:2];
+					// get the tag ID and store in a reg
+					tag_id <= data_addr[19:9];
+					// get the data to be written and store in a reg
+					if (wvalid == 1'b1)
+						wdata_ff <= wdata;
 				end
-				valid_array[(set_id*NUM_WAYS)+i] <= 1'b1;
 			end
-		end
-
-		// write miss case: invoke Clock cache replacement policy
-		if (w_hit == 1'b0) begin
-			// iterate through all the elements of the set and find the first
-			// block which has clock_set = 0
-		end		
-	end
-	else if (arvalid == 1'b1) begin 
+			CACHE_WRITE: begin
+				// check if tag matches any of 8 blocks in the set; it doesn't
+				// matter if the block is valid or not
+				for (i = 0; i < 8; i++) begin
+					if (tag_id == tag_array[(set_id*NUM_WAYS)+i]) begin
+						w_hit <= 1'b1;
+						state <= CACHE_WHIT;
+						break;
+					end else
+						state <= CACHE_WMISS;
+				end
+			end
+			CACHE_WHIT: begin
+				data_array[(set_id*NUM_WAYS)+i] <= wdata_ff;
+				valid_array[(set_id*NUM_WAYS)+i] <= 1'b1;
+				w_resp[0] <= 1'b1; 
+				state <= CACHE_IDLE;
+			end
+			CACHE_WMISS: begin
+				// invoke Clock cache replacement policy
+				// iterate through all the elements of the set and find the first
+				// block which has clock_set = 0
+				for (i = 0; i < 8; i++) begin
+					// once you find the non-zero clock block after the most
+					// recently replaced one, we will our write in the cache
+					// block
+					//
+					// TODO the evicted cache needs to written back to memory
+					if (clock_set[set_id][curr_clock_block[set_id]+i+1] == 1'b0) begin 
+						data_array[(set_id*NUM_WAYS)+(curr_clock_block[set_id]+i+1)] <= wdata_ff;
+						tag_array[(set_id*NUM_WAYS)+(curr_clock_block[set_id]+i+1)] <= tag_id;
+						valid_array[(set_id*NUM_WAYS)+(curr_clock_block[set_id]+i+1)] <= 1'b1;
+						curr_clock_block[set_id] <= curr_clock_block[set_id]+i+1;
+						w_resp[0] <= 1'b1;
+						break;
+					end
+				end
+				state <= CACHE_IDLE;
+			end 
+			default: begin
+				state <= CACHE_IDLE;
+			end
+		endcase
 	end
 end
 

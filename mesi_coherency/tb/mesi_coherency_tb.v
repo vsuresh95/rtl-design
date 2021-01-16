@@ -13,6 +13,8 @@ wire rvalid;
 wire [31:0] rdata;
 wire w_hit;
 wire r_hit;
+wire w_miss;
+wire r_miss;
 wire [1:0] w_resp;
 wire [1:0] r_resp;
 
@@ -32,14 +34,79 @@ mesi_coherency dut (
 	.r_resp (r_resp)
 );
 
+task write_word;
+	input[31:0] local_addr;
+	input[31:0] local_data;
+
+	$display("Starting write to 0x%x", local_addr);
+	@(posedge clk);
+	data_addr <= local_addr;
+	awvalid <= 1'b1;
+	wdata <= local_data;
+	wvalid <= 1'b1;
+	@(posedge clk);
+	awvalid <= 1'b0;
+	wvalid <= 1'b0;
+
+	wait(w_resp[0] == 1'b1);
+	if (w_resp[1] == 1'b1) begin
+		$display("Error received for write to 0x%x", local_addr);
+	end else begin
+		$display("Write to 0x%x successful", local_addr);
+	end
+endtask
+
+task read_word;
+	input[31:0] local_addr;
+	output[31:0] local_data;
+	
+	$display("Starting read from 0x%x", local_addr);
+	@(posedge clk);
+	data_addr <= local_addr;
+	arvalid <= 1'b1;
+	@(posedge clk);
+	arvalid <= 1'b0;
+	wait(r_resp[0] == 1'b1);		
+	local_data = rdata;
+	if (r_resp[1] == 1'b1) begin
+		$display("Error received for read from 0x%x", local_addr);
+	end else begin
+		$display("Read from 0x%x successful, read data = 0x%x", local_addr, local_data);
+	end
+endtask
+
 initial begin
+`ifndef DUMP_FSDB
+	$vcdplusfile("mesi_coherency.vpd");
+	$vcdpluson(0, mesi_coherency_tb);
+	$vcdplusmemon;
+`else
 	$fsdbDumpvars(0, mesi_coherency_tb, "+fsdbfile+mesi_coherency.fsdb");
+`endif
 
 	$display("Test started");
 
-	#5 rstn = 1;
+	#10 rstn = 1;
 
-	$display("Test completed");
+	#10 write_word(20'h8_1000, 32'h1234_5678);
+	#10 write_word(20'h8_1010, 32'hBEEFDEAD);
+	#10 write_word(20'h8_1020, 32'h8765_4321);
+	#10 write_word(20'h8_1030, 32'hDEADBEEF);
+	#10 write_word(20'h8_1400, 32'h1234_5678);
+	#10 write_word(20'h8_1410, 32'hBEEFDEAD);
+	#10 write_word(20'h8_1420, 32'h8765_4321);
+	#10 write_word(20'h8_1430, 32'hDEADBEEF);
+	#10 write_word(20'h8_1800, 32'h1234_5678);
+	#10 write_word(20'h8_1810, 32'hBEEFDEAD);
+	#10 write_word(20'h8_1820, 32'h8765_4321);
+	#10 write_word(20'h8_1830, 32'hDEADBEEF);
+	#10 write_word(20'h8_1400, 32'h1234_5678);
+	#10 write_word(20'h8_1410, 32'hBEEFDEAD);
+	#10 write_word(20'h8_1420, 32'h8765_4321);
+	#10 write_word(20'h8_1430, 32'hDEADBEEF);
+	
+	$display("Test completed at %0t", $time);
+	$finish;
 end
 
 initial begin 
@@ -50,7 +117,7 @@ initial begin
 	awvalid = 1'b0;
 	arvalid = 1'b0;
 	wvalid = 1'b0;
-	#10000;
+	#1000;
 	$finish;
 end
 
