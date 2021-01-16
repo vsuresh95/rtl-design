@@ -6,6 +6,7 @@ export WORKAREA=${PWD}
 
 CC_OPTS+=-sverilog -kdb -debug_access+all
 INCDIR+='+incdir+$(WORKAREA)/rtl'
+DUMP_VPD?=
 
 all: compile run
 
@@ -20,7 +21,11 @@ clean:
 	rm -rf *DB DVEfiles *novas* csrc *simv *daidir *log *Log ucli.key *vpd *fsdb
 
 debug:
+ifeq ($(DUMP_FSDB), y)
 	$(VERDI_HOME)/bin/verdi -simBin $(WORKAREA)/$(PROJECT).simv -ssf $(WORKAREA)/$(PROJECT).fsdb
+else
+	$(VCS_HOME)/bin/dve -vpd $(WORKAREA)/$(PROJECT).vpd
+endif
 
 create_test:
 	mkdir -p $(PROJECT)/rtl
