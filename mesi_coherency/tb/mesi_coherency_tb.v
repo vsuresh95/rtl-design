@@ -1,4 +1,5 @@
 `include "mesi_coherency.v"
+`include "external_memory.v"
 
 module mesi_coherency_tb ();
 
@@ -26,6 +27,7 @@ wire ext_rvalid;
 wire [31:0] ext_rdata;
 wire [1:0] ext_w_resp;
 wire [1:0] ext_r_resp;
+
 
 integer i, j;
 reg [19:0] test_addr;
@@ -148,5 +150,22 @@ initial begin
 		clk = ~clk;
 	end
 end
+
+external_memory mem_inst (
+	.clk (clk),
+	.rstn (rstn),
+	.m_addr ({12'h0,ext_data_addr}),
+	.m_wdata (ext_wdata),
+	.m_rdata (ext_rdata),
+	.m_awvalid (ext_awvalid),
+	.m_arvalid (ext_arvalid),
+	.m_wvalid (ext_wvalid),
+	.m_rvalid (ext_rvalid),
+	.m_wsize (12'h4),
+	.m_rsize (12'h4),
+	.m_w_resp (ext_w_resp),
+	.m_r_resp (ext_r_resp)
+);
+
 
 endmodule
